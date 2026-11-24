@@ -328,7 +328,7 @@ function nestApplyMain() {
     }
 
     // =================================================================================
-    // Cleanup (Refined Laser Janitor V2.2). nest.js already worked out what to
+    // Cleanup (Refined Laser Janitor V2.3). nest.js already worked out what to
     // do; here it's applied by path number: merge stacked points, remove
     // specks, move duplicates (yellow) and draw overlap markers. Duplicates and
     // markers ride along with their part, then go to the "duplicates" layer.
@@ -574,7 +574,7 @@ function nestApplyMain() {
     if (notes.length) msg += "\n\nPlease check:\n" + notes.join("\n");
     if (CLEANUP && res.cleanTotals) {
         var ct = res.cleanTotals;
-        msg += "\n\nCleanup: " + ct.specks + " speck(s) removed, " + ct.points + " stacked point(s) merged, " +
+        msg += "\n\nCleanup: " + ct.specks + " speck(s) removed, " + (ct.tinyKept || 0) + " tiny non-cut item(s) kept, " + ct.points + " stacked point(s) merged, " +
                ct.dups + " duplicate(s) and " + ct.overlaps + " overlap(s) put on the \"" + CFG.DUP_LAYER + "\" layer.";
         if (cleanSkipped) msg += "\n" + cleanSkipped + " object(s) couldn't be matched up and were left uncleaned.";
     }
