@@ -65,12 +65,61 @@ if (!IN.version || IN.version < 2 || !IN.settings) bail("nest_input.json is from
 const SET = IN.settings;
 
 // ---------------------------------------------------------------------------
+// AUTO ROTATION (rotation step 0): nest the whole job at 90°, 45° and 10° at
+// the same time (three copies of this engine side by side) and keep the
+// tightest: fewest parts left over, then fewest sheets, then the least used
+// space on each paper's last sheet.
+// ---------------------------------------------------------------------------
+if (IN.rotationStep === 0 && !process.env.NEST_ROT) {
+  const { spawn } = require("child_process"), os = require("os");
+  const steps = [90, 45, 10], T = Date.now();
+  console.error("Auto rotation: trying 90, 45 and 10 degree steps side by side...");
+  const runs = steps.map(step => new Promise(done => {
+    const out = path.join(os.tmpdir(), `nest_auto_${step}_${process.pid}.json`);
+    const child = spawn(process.execPath, [__filename, inPath, out], { env: { ...process.env, NEST_ROT: String(step) }, stdio: "ignore" });
+    child.on("exit", () => {
+      let r = null;
+      try { r = JSON.parse(fs.readFileSync(out, "utf8")); fs.unlinkSync(out); } catch (e) {}
+      done({ step, r });
+    });
+  }));
+  Promise.all(runs).then(all => {
+    const ok = all.filter(a => a.r && !a.r.error);
+    if (!ok.length) { const e = all.find(a => a.r && a.r.error); bail(e ? e.r.error : "Auto rotation: all three runs failed."); }
+    const score = r => {
+      const last = new Map();
+      for (const sh of r.sheets) last.set(sh.material, sh);
+      let used = 0;
+      for (const sh of last.values()) {
+        let x1 = 0, y0 = Infinity;
+        for (const p of sh.placed) { x1 = Math.max(x1, p.maxX); y0 = Math.min(y0, p.minY); }
+        if (sh.placed.length) used += x1 * (r.sheetH - y0);
+      }
+      return [r.unfitted.length, r.sheets.length, used];
+    };
+    const better = (a, b) => { const sa = score(a.r), sb = score(b.r);
+      for (let i = 0; i < 3; i++) { if (sa[i] < sb[i] - 1e-6) return true; if (sa[i] > sb[i] + 1e-6) return false; } return false; };
+    let best = ok[0];
+    for (const a of ok.slice(1)) if (better(a, best)) best = a;
+    const R = best.r;
+    const tried = ok.map(a => ({ step: a.step, sheets: a.r.sheets.length, unfitted: a.r.unfitted.length, seconds: a.r.seconds }));
+    R.autoRotation = { picked: best.step, tried };
+    R.seconds = (Date.now() - T) / 1000;
+    fs.writeFileSync(outPath, JSON.stringify(R));
+    for (const t of tried) console.log(`  ${String(t.step).padStart(2)} degree steps: ${t.sheets} sheet(s)` +
+      (t.unfitted ? `, ${t.unfitted} unfitted` : "") + `, ${t.seconds.toFixed(1)} s` + (t.step === best.step ? "   <- kept" : ""));
+    console.log(`Auto rotation picked ${best.step} degree steps (${R.seconds.toFixed(1)} s in total).`);
+  });
+  return;     // the three copies do the actual nesting
+}
+
+// ---------------------------------------------------------------------------
 // CONFIG (millimetres). Values in the input file win.
 // ---------------------------------------------------------------------------
 const CFG = {
   SPACING_MM:      IN.spacingMM   ?? 2.0,
   MARGIN_MM:       IN.marginMM    ?? 5.0,
-  ROTATION_STEP:   IN.rotationStep ?? 45,   // degrees; 360 = none
+  ROTATION_STEP:   (process.env.NEST_ROT ? +process.env.NEST_ROT : IN.rotationStep) ?? 45,   // degrees; 360 = none, 0 = auto
   ALIGN_TO_EDGES:  true,
   CAND_TOL_MM:     2.0,
   PROBE_GRID_MM:   3.0,
@@ -839,7 +888,7 @@ for (const mat of materials) {
     const colours = SET.recolour !== false ? laserColours(done) : [];
     const sheet = { material: mat, label, index: n, artboardName: SORT ? label : `Sheet ${result.sheets.length + 1}`,
                     placed: done.map((d, k) => {
-                      const o = { items: d.items, angle: d.angle, minX: d.minX, minY: d.minY };
+                      const o = { items: d.items, angle: d.angle, minX: d.minX, minY: d.minY, maxX: d.maxX, maxY: d.maxY };
                       if (colours[k]) o.colours = colours[k];
                       if (d.part.clean) {
                         o.clean = d.part.clean.byItem; o.overlaps = d.part.clean.overlaps;

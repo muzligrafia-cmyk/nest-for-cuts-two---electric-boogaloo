@@ -563,6 +563,12 @@ function nestApplyMain() {
     for (i = 0; i < res.sheets.length; i++) { msg += "\n  " + res.sheets[i].label + " \u2014 " + perSheet[i] + " part(s)"; totalPlaced += perSheet[i]; }
     if (!res.sheets.length) msg += "\n  (no sheets: nothing could be nested)";
     if (res.inHoles) msg += "\n\n" + res.inHoles + " part(s) tucked inside holes.";
+    if (res.autoRotation) {
+        var ar = res.autoRotation, tr = [];
+        for (i = 0; i < ar.tried.length; i++) tr.push(ar.tried[i].step + "\u00B0: " + ar.tried[i].sheets + " sheet(s)" +
+            (ar.tried[i].unfitted ? ", " + ar.tried[i].unfitted + " unfitted" : ""));
+        msg += "\n\nRotation: Auto kept " + ar.picked + "\u00B0 steps (" + tr.join(" \u00B7 ") + ").";
+    }
     var notes = [];
     if (res.flags) for (i = 0; i < res.flags.length; i++) {
         var fl = res.flags[i];

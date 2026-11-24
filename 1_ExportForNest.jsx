@@ -96,8 +96,9 @@ function nestExportInner() {
     var rBox = radio(pL, "Text box area only", prefs.label !== "strip");
     var rStrip = radio(pL, "Full-width strip", prefs.label === "strip");
     var pR = panel("Rotation (after straightening each part)");
-    var ROT_CHOICES = [[90, "90\u00B0 steps (fastest)"], [45, "45\u00B0 steps"], [10, "10\u00B0 steps (slowest, test)"]], rR = [];
-    var rotRow = pR.add("group"); rotRow.orientation = "row"; rotRow.spacing = 16;
+    var ROT_CHOICES = [[90, "90\u00B0 steps (fastest, good for boxy parts)"], [45, "45\u00B0 steps (good for diagonal / fan shapes)"],
+                       [10, "10\u00B0 steps (slowest, for organic shapes)"], [0, "Auto (tries all three, keeps the tightest)"]], rR = [];
+    var rotRow = pR.add("group"); rotRow.orientation = "column"; rotRow.alignChildren = ["left", "top"]; rotRow.spacing = 6;
     for (var rr0 = 0; rr0 < ROT_CHOICES.length; rr0++) rR.push(radio(rotRow, ROT_CHOICES[rr0][1], ROT_CHOICES[rr0][0] === prefs.rotStep));
     var anyRot = false;
     for (rr0 = 0; rr0 < rR.length; rr0++) if (rR[rr0].value) anyRot = true;

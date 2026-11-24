@@ -4,6 +4,16 @@ All notable changes to Nest For Cuts Two - Electric Boogaloo.
 
 ## 2026-11-24
 
+### Added
+- **Auto rotation.** A fourth choice in step 1's Rotation panel. Step 2 nests
+  the job at 90°, 45° and 10° steps at the same time (three copies of the
+  engine side by side) and keeps the tightest result: fewest parts left over,
+  then fewest sheets, then the least space used on each paper's last sheet.
+  Takes about as long as the 10° run on its own. The step 2 window and the
+  step 3 alert say which one was kept and what the others gave.
+- Short hints next to each rotation choice (boxy / diagonal and fan shapes /
+  organic).
+
 ### Changed
 - **Built-in Cleanup updated to Cleanup.js V2.3 (Refined Laser Janitor).**
   Specks are only removed if they are cuts. Because Cleanup runs before the
