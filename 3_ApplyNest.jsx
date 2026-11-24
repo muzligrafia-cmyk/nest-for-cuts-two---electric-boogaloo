@@ -251,7 +251,13 @@ function nestApplyMain() {
         try { p.stroked = false; } catch (e) {}
         try { p.filled = true; p.fillColor = cBlack; } catch (e) {}
     }
-    function lineColour(st) { return st === "red" ? cRed : st === "blue" ? cBlue : cBlack; }
+    // Plain if/else on purpose: ExtendScript reads chained "a ? b : c ? d : e"
+    // the wrong way round (that turned every red score line blue).
+    function lineColour(st) {
+        if (st === "red") return cRed;
+        if (st === "blue") return cBlue;
+        return cBlack;
+    }
     // Read an object once: list what to do with each path (ops) and return how
     // many paper outlines step 1 would have counted (-1 = can't tell).
     function plan(item, ops, inner) {
