@@ -60,7 +60,7 @@ function nestExportInner() {
     // =========================================================================
     // Settings panel (remembers your last choices)
     // =========================================================================
-    var prefs = { machine: 1, output: "new", label: "box", overlaps: true, sortPaper: true, recolour: true, cleanup: false, rotStep: 45, normalize: true };
+    var prefs = { machine: 1, output: "new", label: "box", overlaps: true, sortPaper: true, recolour: true, cleanup: false, rotStep: 45, normalize: true, fillExisting: true };
     (function loadPrefs() {
         var f = new File(CFG.PREFS_FILE);
         if (!f.exists) return;
@@ -96,6 +96,11 @@ function nestExportInner() {
     var pO = panel("Put the sheets in");
     var rCur = radio(pO, "Current document", prefs.output === "current");
     var rNew = radio(pO, "New document (your design stays untouched)", prefs.output !== "current");
+    var cbFill = pO.add("checkbox", undefined, "Fill existing sheets (same paper and machine, label still on)");
+    try { cbFill.graphics.font = ScriptUI.newFont("dialog", "REGULAR", 14); } catch (e) {}
+    cbFill.value = !!prefs.fillExisting;
+    function syncFill() { cbFill.enabled = rCur.value; }
+    rCur.onClick = syncFill; rNew.onClick = syncFill; syncFill();
     var pL = panel("Keep the label corner free as");
     var rBox = radio(pL, "Text box area only", prefs.label !== "strip");
     var rStrip = radio(pL, "Full-width strip", prefs.label === "strip");
@@ -139,6 +144,7 @@ function nestExportInner() {
 
     for (m = 0; m < rM.length; m++) if (rM[m].value) prefs.machine = m;
     prefs.output = rCur.value ? "current" : "new";
+    prefs.fillExisting = cbFill.value;
     prefs.label = rStrip.value ? "strip" : "box";
     prefs.overlaps = cbOv.value;
     for (var rr1 = 0; rr1 < rR.length; rr1++) if (rR[rr1].value) prefs.rotStep = ROT_CHOICES[rr1][0];
@@ -151,7 +157,8 @@ function nestExportInner() {
                     '","overlaps":' + (prefs.overlaps ? "true" : "false") +
                     ',"sortPaper":' + (prefs.sortPaper ? "true" : "false") + ',"cleanup":' + (prefs.cleanup ? "true" : "false") +
                     ',"recolour":' + (prefs.recolour ? "true" : "false") +
-                    ',"rotStep":' + prefs.rotStep + ',"normalize":' + (prefs.normalize ? "true" : "false") + "}");
+                    ',"rotStep":' + prefs.rotStep + ',"normalize":' + (prefs.normalize ? "true" : "false") +
+                    ',"fillExisting":' + (prefs.fillExisting ? "true" : "false") + "}");
             f.close();
         } catch (e) {}
     })();
@@ -345,7 +352,9 @@ function nestExportInner() {
         } else if (tn === "TextFrame") {
             // Live text is never carried onto the sheets (only outlined text,
             // which is just black shapes by then). Counted for the final alert.
-            textSkipped++;
+            // On an existing sheet it just takes up space.
+            if (readingSheet) info.rings.push({ c: "other", z: true, o: info.obj++, p: boundsRing(item.geometricBounds) });
+            else textSkipped++;
         } else {
             var names = { PlacedItem: "linked image", RasterItem: "embedded image", SymbolItem: "symbol (expand it)",
                           PluginItem: "blend / effect object (expand it)", MeshItem: "gradient mesh", GraphItem: "graph" };
@@ -376,7 +385,7 @@ function nestExportInner() {
     var docLayers = doc.layers, nDL = docLayers.length, pi, it;
     for (pi = 0; pi < nDL; pi++) collectTop(docLayers[pi]);
 
-    var sources = [], textSkipped = 0;
+    var sources = [], textSkipped = 0, readingSheet = false;
     var sel = doc.selection, nSel = sel.length;          // read the selection once
     if (nSel) {
         for (pi = 0; pi < nSel; pi++) {
@@ -496,14 +505,84 @@ function nestExportInner() {
                     (CLEAN ? ',"paths":' + pathsJSON(info.paths) : "") + "}");
     }
 
+    // =========================================================================
+    // Existing sheets ("Fill existing sheets", Current document only).
+    // A sheet counts when its artboard is this machine's size and its label
+    // is still on the Labels layer (labels are deleted before cutting, so a
+    // sheet without one is treated as done). Everything on it is sent as
+    // outlines only, so the engine knows which spots are taken.
+    // =========================================================================
+    var abNamesJ = [], existingJ = [], nExisting = 0;
+    if (prefs.output === "current") {
+        var abs = doc.artboards, nAB = abs.length, ai;
+        for (ai = 0; ai < nAB; ai++) abNamesJ.push(esc(abs[ai].name));
+        if (prefs.fillExisting) {
+            var SW = MACH.w * PT_PER_MM, SHt = MACH.h * PT_PER_MM, ABTOL = 1.5, cands = [];
+            for (ai = 0; ai < nAB; ai++) {
+                var ar = abs[ai].artboardRect;
+                if (Math.abs((ar[2] - ar[0]) - SW) < ABTOL && Math.abs((ar[1] - ar[3]) - SHt) < ABTOL)
+                    cands.push({ i: ai, r: ar, name: abs[ai].name, label: null, items: [] });
+            }
+            var labL = null;
+            for (ai = 0; ai < nDL; ai++) if (docLayers[ai].name === "Labels") labL = docLayers[ai];
+            if (cands.length && labL) {
+                var lk = labL.pageItems, nlk = lk.length, li, ci;
+                for (li = 0; li < nlk; li++) {
+                    if (lk[li].typename !== "TextFrame") continue;
+                    var lb = lk[li].geometricBounds, lx = (lb[0] + lb[2]) / 2, ly = (lb[1] + lb[3]) / 2;
+                    for (ci = 0; ci < cands.length; ci++) {
+                        var cr = cands[ci].r;
+                        if (!cands[ci].label && lx > cr[0] && lx < cr[2] && ly < cr[1] && ly > cr[3]) { cands[ci].label = lk[li].contents; break; }
+                    }
+                }
+                var sheetsUsed = [];
+                for (ci = 0; ci < cands.length; ci++) if (cands[ci].label) sheetsUsed.push(cands[ci]);
+                if (sheetsUsed.length) {
+                    var notOn = { "Labels": 1, "duplicates": 1, "UNFITTED": 1, "skipped": 1 }, ti, tb, tl;
+                    for (ti = 0; ti < topItems.length; ti++) {
+                        var t0 = topItems[ti];
+                        try {
+                            if (t0.hidden) continue;
+                            var tnote = t0.note; if (tnote && tnote.indexOf("NEST_") === 0) continue;   // being nested now
+                            tl = t0.layer; if (!tl.visible || notOn[tl.name]) continue;
+                            tb = t0.geometricBounds;
+                        } catch (e) { continue; }
+                        for (ci = 0; ci < sheetsUsed.length; ci++) {
+                            var sr = sheetsUsed[ci].r;
+                            if (tb[0] < sr[2] && tb[2] > sr[0] && tb[1] > sr[3] && tb[3] < sr[1]) sheetsUsed[ci].items.push(t0);
+                        }
+                    }
+                    var keepClean = CLEAN; CLEAN = false; readingSheet = true;
+                    for (ci = 0; ci < sheetsUsed.length; ci++) {
+                        var su = sheetsUsed[ci], ij = [];
+                        for (ti = 0; ti < su.items.length; ti++) {
+                            var sinfo = newInfo();
+                            try { readItem(su.items[ti], sinfo); } catch (e) {
+                                try { sinfo.rings.push({ c: "other", z: true, o: 0, p: boundsRing(su.items[ti].geometricBounds) }); } catch (e2) {}
+                            }
+                            if (sinfo.rings.length) ij.push('{"rings":' + ringsJSON(sinfo.rings) + "}");
+                        }
+                        existingJ.push('{"ab":' + su.i + ',"name":' + esc(su.name) + ',"label":' + esc(su.label) +
+                                       ',"rect":[' + num(su.r[0]) + "," + num(su.r[1]) + "," + num(su.r[2]) + "," + num(su.r[3]) + '],"items":[' + ij.join(",") + "]}");
+                        nExisting++;
+                    }
+                    CLEAN = keepClean; readingSheet = false;
+                }
+            }
+        }
+    }
+
     var json = '{"version":2,"settings":{' +
         '"machine":' + esc(MACH.name) + ',"sheetWmm":' + MACH.w + ',"sheetHmm":' + MACH.h +
         ',"output":"' + prefs.output + '","labelMode":"' + prefs.label + '","overlaps":' + (prefs.overlaps ? "true" : "false") +
         ',"sortPaper":' + (prefs.sortPaper ? "true" : "false") + ',"cleanup":' + (prefs.cleanup ? "true" : "false") +
         ',"recolour":' + (prefs.recolour ? "true" : "false") +
+        ',"fillExisting":' + (prefs.fillExisting ? "true" : "false") +
         ',"sourceDoc":' + esc(doc.name) + '},' +
         '"spacingMM":' + CFG.SPACING + ',"marginMM":' + CFG.MARGIN + ',"rotationStep":' + prefs.rotStep +
-        ',"timeLimitS":' + CFG.TIME_LIMIT_S + ',"textSkipped":' + textSkipped + ',"items":[' + itemsJ.join(",") + "]}";
+        ',"timeLimitS":' + CFG.TIME_LIMIT_S + ',"textSkipped":' + textSkipped +
+        ',"artboardNames":[' + abNamesJ.join(",") + '],"existingSheets":[' + existingJ.join(",") + ']' +
+        ',"items":[' + itemsJ.join(",") + "]}";
 
     var f = new File(CFG.OUT_FILE);
     f.encoding = "UTF-8";
@@ -518,6 +597,7 @@ function nestExportInner() {
           "  " + nParts + " part(s)\n" +
           "  " + nLines + " loose line object(s)\n" +
           (textSkipped ? "  " + textSkipped + " live text box(es) left out (outline text to keep it)\n" : "") +
+          (nExisting ? "  " + nExisting + " existing sheet(s) with gaps to fill first\n" : "") +
           (nOdd ? "  " + nOdd + " object(s) with something unexpected (listed after step 3)\n" : "") +
           "\nNext: double-click 2_RunNest, then run 3_ApplyNest.jsx.");
 

@@ -24,3 +24,12 @@ Keep `NestForCuts_OneClick.jsx` in the same folder as `1_ExportForNest.jsx`, `ne
 
 Windows only for now.
 
+## Fill existing sheets
+
+With **Current document** chosen, tick **Fill existing sheets** to top up the sheets already in the file before new ones are made:
+
+- A sheet is filled only if its artboard is the size of the machine you picked **and its label is still on the "Labels" layer**. The label tells the script which paper the sheet is. Labels are deleted before cutting, so a sheet without one counts as finished and is left alone.
+- Parts already on the sheet stay exactly where they are. New parts of the same paper go into the gaps around them (and into their holes), with the usual spacing and margins.
+- Whatever doesn't fit gets new sheets, numbered on from the existing ones ("Kraft (2)" is there, so the next one is "Kraft (3)").
+- With **Sort by paper** off, new parts fill the old "paper name here" sheets.
+- Untick it to always get fresh sheets. With **New document** it does nothing.

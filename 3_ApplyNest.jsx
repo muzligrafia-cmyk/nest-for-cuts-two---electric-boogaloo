@@ -94,14 +94,16 @@ function nestApplyMain() {
     // ---- lay the sheets out: one row per paper ------------------------------
     var gap = CFG.GAP_MM * PT, maxRow = CFG.MAX_ROW_MM * PT;
     var pos = [], x = 0, y = 0, prevMat = null, gridW = 0, i;
+    var nNewSheets = 0;
     for (i = 0; i < res.sheets.length; i++) {
         var sh = res.sheets[i];
-        if (i > 0 && (sh.material !== prevMat || x + W > maxRow)) { x = 0; y += H + gap; }
+        if (sh.existing) { pos.push(null); continue; }  // already in the document
+        if (nNewSheets++ > 0 && (sh.material !== prevMat || x + W > maxRow)) { x = 0; y += H + gap; }
         pos.push({ x: x, y: y });                    // offset from the grid's top-left, y downwards
         if (x + W > gridW) gridW = x + W;
         x += W + gap; prevMat = sh.material;
     }
-    var gridH = res.sheets.length ? y + H : 0;
+    var gridH = nNewSheets ? y + H : 0;
 
     // ---- target document ------------------------------------------------------
     var tgt, originL, originT;
@@ -123,12 +125,14 @@ function nestApplyMain() {
     // ---- artboards first (if the canvas is full, nothing has moved yet) ------
     var rects = [];
     try {
+        var firstNew = true;
         for (i = 0; i < res.sheets.length; i++) {
+            if (res.sheets[i].existing) { var er = res.sheets[i].abRect; rects.push([er[0], er[1], er[2], er[3]]); continue; }
             var L = originL + pos[i].x, T = originT - pos[i].y, rect = [L, T, L + W, T - H], ab;
-            if (S.output === "new" && i === 0) { ab = tgt.artboards[0]; ab.artboardRect = rect; }
+            if (S.output === "new" && firstNew) { ab = tgt.artboards[0]; ab.artboardRect = rect; }
             else ab = tgt.artboards.add(rect);
             try { ab.name = res.sheets[i].artboardName || res.sheets[i].label; } catch (e) {}
-            rects.push(rect);
+            rects.push(rect); firstNew = false;
         }
     } catch (e) {
         alert("Couldn't create sheet " + (rects.length + 1) + " of " + res.sheets.length +
@@ -545,6 +549,7 @@ function nestApplyMain() {
     var black = new RGBColor(); black.red = 0; black.green = 0; black.blue = 0;
     var inset = (res.labelInsetMM || 10) * PT;
     for (i = 0; i < res.sheets.length; i++) {
+        if (res.sheets[i].existing) continue;          // its label is already there
         var tf = labels.textFrames.add();
         tf.contents = res.sheets[i].label;
         var ca = tf.textRange.characterAttributes;
@@ -572,13 +577,17 @@ function nestApplyMain() {
     }
     if (fallback.length) lap("Prep fallback");
     app.activeDocument = tgt;
-    try { tgt.artboards.setActiveArtboardIndex(S.output === "new" ? 0 : tgt.artboards.length - res.sheets.length); } catch (e) {}
+    try { tgt.artboards.setActiveArtboardIndex(S.output === "new" ? 0 : Math.max(0, tgt.artboards.length - Math.max(1, nNewSheets))); } catch (e) {}
     app.redraw();
 
     // ---- report ----------------------------------------------------------------------------
     var msg = "Done for " + S.machine + (res.seconds ? " (engine took " + Math.round(res.seconds * 10) / 10 + " s)" : "") + ":\n";
     var totalPlaced = 0;
-    for (i = 0; i < res.sheets.length; i++) { msg += "\n  " + res.sheets[i].label + " \u2014 " + perSheet[i] + " part(s)"; totalPlaced += perSheet[i]; }
+    for (i = 0; i < res.sheets.length; i++) {
+        msg += "\n  " + res.sheets[i].label + " \u2014 " + perSheet[i] + " part(s)" +
+               (res.sheets[i].existing ? " added to the existing sheet" + (res.sheets[i].artboardName ? " \"" + res.sheets[i].artboardName + "\"" : "") : "");
+        totalPlaced += perSheet[i];
+    }
     if (!res.sheets.length) msg += "\n  (no sheets: nothing could be nested)";
     if (res.inHoles) msg += "\n\n" + res.inHoles + " part(s) tucked inside holes.";
     if (res.textSkipped) msg += "\n\n" + res.textSkipped + " live text box(es) were not carried over" +

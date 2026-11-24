@@ -12,6 +12,13 @@ All notable changes to Nest For Cuts Two - Electric Boogaloo.
   final alert. If Node.js is missing, the engine fails or it doesn't finish
   in time, an alert says so instead of hanging. The three separate steps
   still work as before.
+- **Fill existing sheets** (Current document only, ticked by default). New
+  parts first go into the gaps and holes on sheets already in the file with
+  the same paper and machine size. A sheet counts only while its label is
+  still on the Labels layer, so sheets whose labels were deleted (i.e. cut)
+  are left alone. Parts already on a sheet never move. New sheets carry on
+  the numbering ("Kraft (2)" exists, so the next is "Kraft (3)"; unsorted
+  "Sheet N" artboards too). Auto rotation only counts new sheets.
 
 ### Fixed
 - One-click fell back to "now run 2_RunNest" in real Illustrator: the one-click

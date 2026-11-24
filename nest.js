@@ -91,21 +91,21 @@ if (IN.rotationStep === 0 && !process.env.NEST_ROT) {
     if (!ok.length) { const e = all.find(a => a.r && a.r.error); bail(e ? e.r.error : "Auto rotation: all three runs failed."); }
     const score = r => {
       const last = new Map();
-      for (const sh of r.sheets) last.set(sh.material, sh);
+      for (const sh of r.sheets) if (!sh.existing) last.set(sh.material, sh);
       let used = 0;
       for (const sh of last.values()) {
         let x1 = 0, y0 = Infinity;
         for (const p of sh.placed) { x1 = Math.max(x1, p.maxX); y0 = Math.min(y0, p.minY); }
         if (sh.placed.length) used += x1 * (r.sheetH - y0);
       }
-      return [r.unfitted.length, r.sheets.length, used];
+      return [r.unfitted.length, r.sheets.filter(sh => !sh.existing).length, used];   // filled existing sheets cost nothing
     };
     const better = (a, b) => { const sa = score(a.r), sb = score(b.r);
       for (let i = 0; i < 3; i++) { if (sa[i] < sb[i] - 1e-6) return true; if (sa[i] > sb[i] + 1e-6) return false; } return false; };
     let best = ok[0];
     for (const a of ok.slice(1)) if (better(a, best)) best = a;
     const R = best.r;
-    const tried = ok.map(a => ({ step: a.step, sheets: a.r.sheets.length, unfitted: a.r.unfitted.length, seconds: a.r.seconds }));
+    const tried = ok.map(a => ({ step: a.step, sheets: a.r.sheets.filter(sh => !sh.existing).length, unfitted: a.r.unfitted.length, seconds: a.r.seconds }));
     R.autoRotation = { picked: best.step, tried };
     R.seconds = (Date.now() - T) / 1000;
     writeOut(R);
@@ -780,9 +780,11 @@ function addGridProbes() {
 let inHoles = 0, timedOut = false, progressN = 0;
 const totalParts = [...byMaterial.values()].reduce((s, l) => s + l.length, 0);
 // Places as many of `list` as fit; returns { done: [...], rest: [...] }
-function nestSheet(list, obstacle) {
+// fixed: parts already on an existing sheet (they stay where they are)
+function nestSheet(list, obstacle, fixed) {
   resetSheet();
   placed.push(obstacle); hashInsertShape(obstacle); seedFromShape(obstacle);
+  for (const F of fixed || []) { placed.push(F); hashInsertShape(F); seedFromShape(F); growEnvelope(F); }
   const done = [], rest = [];
   const spot = { px: 0, pt: 0 }, SLACK = 2*SLMAX;
   for (let pi = 0; pi < list.length; pi++) {
@@ -878,10 +880,78 @@ const result = { settings: SET, sheetW: SHEET_W, sheetH: SHEET_H, labelPt: CFG.L
                  sheets: [], unfitted: [], flags: [], libWarnings: LIB.warnings, library: LIB.file, papersInLibrary: LIB.count,
                  timedOut: false, holesFound, inHoles: 0, textSkipped: IN.textSkipped || 0, cleanTotals: { specks: 0, tinyKept: 0, points: 0, dups: 0, overlaps: 0 } };
 const DEBUG = process.env.NEST_DEBUG === "1";
+
+// ---------------------------------------------------------------------------
+// Existing sheets ("Fill existing sheets", Current document only): sheets
+// already in the document with the same size and a label still on them.
+// The label says which paper; what's on them stays put and the new parts
+// fill the gaps (and holes) around it.
+// ---------------------------------------------------------------------------
+const EXISTING = (SET.output === "current" && SET.fillExisting) ? (IN.existingSheets || []) : [];
+const AB_NAMES = SET.output === "current" ? (IN.artboardNames || []) : [];
+const reEsc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// "Kraft" -> 1, "Kraft (3)" -> 3, anything else -> 0
+function sheetNumber(name, mat) {
+  if (name === mat) return 1;
+  const m = new RegExp("^" + reEsc(mat) + " \\((\\d+)\\)$").exec(name);
+  return m ? +m[1] : 0;
+}
+function existingFor(mat) {
+  const out = [];
+  for (const ex of EXISTING) {
+    const lab = String(ex.label || "").replace(/\s+/g, " ").trim();
+    if (SORT ? !sheetNumber(lab, mat) : lab !== UNSORTED_LABEL) continue;
+    const [L, , , B] = ex.rect;
+    const fixed = [];
+    (ex.items || []).forEach((it, k) => {
+      const rings = (it.rings || []).filter(r => r.p && r.p.length >= (r.c === "cut" && r.z ? 6 : 4));
+      if (!rings.length) return;
+      const g = buildPiece([{ idx: k, rings }]);
+      if (!g) return;
+      const all = g.outers.concat(g.holes).map(r => { const n = new Array(r.length);
+        for (let j = 0; j < r.length; j += 2) { n[j] = r[j] - L; n[j+1] = r[j+1] - B; } return n; });
+      fixed.push(makeShape(all, g.outers.length));
+    });
+    out.push({ ex, label: lab, fixed });
+  }
+  return out;
+}
+// highest number already used for this paper (artboard names + labels),
+// so new sheets carry on: "Kraft (2)" exists -> next is "Kraft (3)"
+function usedNumber(mat) {
+  let n = 0;
+  for (const nm of AB_NAMES) n = Math.max(n, sheetNumber(String(nm), mat));
+  for (const ex of EXISTING) n = Math.max(n, sheetNumber(String(ex.label || "").trim(), mat));
+  return n;
+}
+let unsortedN = 0;
+for (const nm of AB_NAMES) { const m = /^Sheet (\d+)$/.exec(String(nm)); if (m) unsortedN = Math.max(unsortedN, +m[1]); }
+let filledSheets = 0;
+
 const materials = [...byMaterial.keys()].sort((a, b) => a.localeCompare(b));
 for (const mat of materials) {
   let remaining = byMaterial.get(mat).sort((a,b) => CFG.SORT_BY==="height" ? b.h-a.h : CFG.SORT_BY==="width" ? b.w-a.w : b.area-a.area);
-  let n = 1;
+  // 1) gaps on existing sheets of this paper first
+  for (const E of existingFor(mat)) {
+    if (!remaining.length) break;
+    if (timeUp()) { timedOut = true; break; }
+    const { done, rest } = nestSheet(remaining, labelShape(E.label), E.fixed);
+    if (!done.length) continue;
+    const colours = SET.recolour !== false ? laserColours(done) : [];
+    result.sheets.push({ material: mat, label: E.label, existing: true, abRect: E.ex.rect, artboardName: E.ex.name,
+      placed: done.map((d, k) => {
+        const o = { items: d.items, angle: d.angle, minX: d.minX, minY: d.minY, maxX: d.maxX, maxY: d.maxY };
+        if (colours[k]) o.colours = colours[k];
+        if (d.part.clean) {
+          o.clean = d.part.clean.byItem; o.overlaps = d.part.clean.overlaps;
+          const c = d.part.clean.counts; for (const key in c) result.cleanTotals[key] += c[key];
+        }
+        return o; }) });
+    filledSheets++;
+    remaining = rest;
+  }
+  // 2) new sheets for the rest
+  let n = SORT ? usedNumber(mat) + 1 : 1;
   while (remaining.length) {
     if (timeUp()) { timedOut = true; break; }
     const label = !SORT ? UNSORTED_LABEL : n === 1 ? mat : `${mat} (${n})`;
@@ -889,7 +959,7 @@ for (const mat of materials) {
     const { done, rest } = nestSheet(remaining, obstacle);
     if (!done.length) break;                            // nothing fits even on an empty sheet
     const colours = SET.recolour !== false ? laserColours(done) : [];
-    const sheet = { material: mat, label, index: n, artboardName: SORT ? label : `Sheet ${result.sheets.length + 1}`,
+    const sheet = { material: mat, label, index: n, artboardName: SORT ? label : `Sheet ${++unsortedN}`,
                     placed: done.map((d, k) => {
                       const o = { items: d.items, angle: d.angle, minX: d.minX, minY: d.minY, maxX: d.maxX, maxY: d.maxY };
                       if (colours[k]) o.colours = colours[k];
@@ -909,6 +979,7 @@ if (tooBig.length) flagCounts.set(`Parked on UNFITTED, bigger than the ${SET.mac
 result.flags = [...flagCounts].map(([reason, count]) => ({ reason, count }));
 result.timedOut = timedOut;
 result.inHoles = inHoles;
+result.filledSheets = filledSheets;
 process.stderr.write("\n");
 result.seconds = (Date.now()-T0)/1000;
 writeOut(result);
@@ -916,6 +987,6 @@ const nPlaced = result.sheets.reduce((s, sh) => s + sh.placed.length, 0);
 console.log(`Placed ${nPlaced} part(s) on ${result.sheets.length} sheet(s) in ${result.seconds.toFixed(1)} s` +
   (inHoles ? `, ${inHoles} inside holes` : "") +
   (result.unfitted.length ? `, ${result.unfitted.length} unfitted` : ""));
-for (const sh of result.sheets) console.log(`  ${sh.label}: ${sh.placed.length} part(s)`);
+for (const sh of result.sheets) console.log(`  ${sh.label}: ${sh.placed.length} part(s)${sh.existing ? " (added to an existing sheet)" : ""}`);
 for (const f of result.flags) console.log(`  ! ${f.reason}${f.count > 1 ? " (" + f.count + "x)" : ""}`);
 for (const w of LIB.warnings) console.log(`  ! ${w}`);
