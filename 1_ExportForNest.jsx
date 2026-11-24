@@ -29,12 +29,16 @@ function nestExportMain() {
     catch (err) { alert("1_ExportForNest stopped with an error:\n" + err.message + (err.line ? "\n(line " + err.line + ")" : "")); }
 }
 function nestExportInner() {
+    // One-click mode? Read the flag and clear it at once, so a cancelled run
+    // can't leave it switched on for a later normal step 1.
+    var oneClick = $.global.__NEST_ONECLICK || null;
+    $.global.__NEST_ONECLICK = null;
     var PT_PER_MM = 2.834645669291339;
     var CFG = {
         // Add or change machines here: name shown in the panel, sheet width
         // and height in millimetres (horizontal).
         MACHINES: [
-            { name: "GCC (Mercury III)",        w: 630,  h: 450 },
+            { name: "GCC (Mercury III, legacy)", w: 630, h: 450 },
             { name: "Trotec 300",               w: 700,  h: 430 },
             { name: "D\u00F6mpi (Trotec 400)",  w: 1010, h: 610 }
         ],
@@ -56,7 +60,7 @@ function nestExportInner() {
     // =========================================================================
     // Settings panel (remembers your last choices)
     // =========================================================================
-    var prefs = { machine: 0, output: "new", label: "box", overlaps: true, sortPaper: true, recolour: true, cleanup: false, rotStep: 90, normalize: true };
+    var prefs = { machine: 1, output: "new", label: "box", overlaps: true, sortPaper: true, recolour: true, cleanup: false, rotStep: 45, normalize: true };
     (function loadPrefs() {
         var f = new File(CFG.PREFS_FILE);
         if (!f.exists) return;
@@ -506,12 +510,78 @@ function nestExportInner() {
     if (!f.open("w")) { alert("Could not write " + CFG.OUT_FILE); return; }
     f.write(json); f.close();
 
+    // One-click mode (started from NestForCuts_OneClick.jsx): run the engine
+    // and step 3 straight away instead of showing this step's alert.
+    if (oneClick) { runOneClick(oneClick.dir); return; }
+
     alert("Exported " + itemsJ.length + " object(s) for " + MACH.name + ":\n" +
           "  " + nParts + " part(s)\n" +
           "  " + nLines + " loose line object(s)\n" +
           (textSkipped ? "  " + textSkipped + " live text box(es) left out (outline text to keep it)\n" : "") +
           (nOdd ? "  " + nOdd + " object(s) with something unexpected (listed after step 3)\n" : "") +
           "\nNext: double-click 2_RunNest, then run 3_ApplyNest.jsx.");
+
+    // =========================================================================
+    // ONE CLICK: start the engine hidden, wait for it, then run step 3
+    // =========================================================================
+    function runOneClick(dir) {
+        var desk = Folder.desktop.fsName;
+        var inFile = desk + "\\nest_input.json", outFile = desk + "\\nest_result.json";
+        var logFile = desk + "\\nest_log.txt", doneFile = desk + "\\nest_done.txt";
+        var engine = new File(dir + "/nest.js"), apply = new File(dir + "/3_ApplyNest.jsx");
+        if (!engine.exists || !apply.exists) {
+            alert("One click needs nest.js and 3_ApplyNest.jsx in the same folder as NestForCuts_OneClick.jsx:\n" + dir); return;
+        }
+        // leftovers from an earlier run would look like a finished one
+        var old = [outFile, logFile, doneFile, outFile + ".part"];
+        for (var k = 0; k < old.length; k++) { var of = new File(old[k]); if (of.exists) of.remove(); }
+
+        // A tiny VBScript starts Node with no console window. When Node is
+        // done (or fails), it leaves nest_done.txt on the Desktop.
+        function q(p) { return '""' + p + '""'; }                    // quotes inside a VBScript string
+        var cmd = 'cmd /c node ' + q(engine.fsName) + ' ' + q(inFile) + ' ' + q(outFile) +
+                  ' > ' + q(logFile) + ' 2>&1 & echo done> ' + q(doneFile);
+        var vbs = new File(Folder.temp.fsName + "/nest_oneclick.vbs");
+        vbs.encoding = "UTF-8";
+        if (!vbs.open("w")) { alert("Couldn't write the launcher in " + Folder.temp.fsName); return; }
+        vbs.write('CreateObject("WScript.Shell").Run "' + cmd + '", 0, False\r\n');
+        vbs.close();
+        if (!vbs.execute()) { alert("Couldn't start the nesting engine (the launcher didn't run)."); return; }
+
+        // wait, with a small progress window
+        var LIMIT_S = CFG.TIME_LIMIT_S + 120, t0 = new Date().getTime(), done = new File(doneFile), win = null, txt = null;
+        try {
+            win = new Window("palette", "Nest for Cuts");
+            win.margins = 20;
+            txt = win.add("statictext", undefined, "Nesting\u2026 0 s");
+            txt.preferredSize = [260, 24];
+            try { txt.graphics.font = ScriptUI.newFont("dialog", "BOLD", 15); } catch (e) {}
+            win.show();
+        } catch (e) { win = null; }
+        var secs = 0;
+        while (!done.exists) {
+            $.sleep(250);
+            secs = Math.round((new Date().getTime() - t0) / 1000);
+            if (win) { try { txt.text = "Nesting\u2026 " + secs + " s"; win.update(); } catch (e) {} }
+            if (secs > LIMIT_S) break;
+        }
+        if (win) { try { win.close(); } catch (e) {} }
+
+        var res = new File(outFile);
+        if (!res.exists) {
+            var log = "";
+            var lf = new File(logFile);
+            if (lf.exists) { lf.encoding = "UTF-8"; lf.open("r"); log = lf.read(); lf.close(); }
+            if (!done.exists) alert("The nesting engine didn't finish within " + LIMIT_S + " s.\nYou can still double-click 2_RunNest, then run 3_ApplyNest.jsx.");
+            else if (/not recognized|not found|ENOENT/i.test(log)) alert("Node.js doesn't seem to be installed (or isn't on the PATH).\n\n" + log.substr(0, 400));
+            else alert("The nesting engine stopped without a result:\n\n" + (log ? log.substr(0, 600) : "(no message)"));
+            return;
+        }
+        try { vbs.remove(); } catch (e) {}
+        // step 3, run straight away (no second deferral needed: we are already deferred)
+        $.global.__NEST_APPLY_NOW = true;
+        $.evalFile(apply);
+    }
 }
 
 // Run via a deferred BridgeTalk message (same as 3_ApplyNest.jsx): when the

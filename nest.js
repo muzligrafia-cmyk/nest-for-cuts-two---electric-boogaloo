@@ -58,7 +58,10 @@ const LIBRARY_FOLDER = "Paper Swatches";
 const inPath  = process.argv[2];
 const outPath = process.argv[3];
 if (!inPath || !outPath) { console.error("usage: node nest.js input.json output.json"); process.exit(1); }
-function bail(msg) { fs.writeFileSync(outPath, JSON.stringify({ error: msg })); console.error(msg); process.exit(0); }
+// Write the result in one go (temp file + rename), so a script waiting for it
+// (one-click mode) never reads a half-written file.
+function writeOut(obj) { const tmp = outPath + ".part"; fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, outPath); }
+function bail(msg) { writeOut({ error: msg }); console.error(msg); process.exit(0); }
 
 const IN = JSON.parse(fs.readFileSync(inPath, "utf8"));
 if (!IN.version || IN.version < 2 || !IN.settings) bail("nest_input.json is from an older version of step 1. Run the new 1_ExportForNest.jsx again.");
@@ -105,7 +108,7 @@ if (IN.rotationStep === 0 && !process.env.NEST_ROT) {
     const tried = ok.map(a => ({ step: a.step, sheets: a.r.sheets.length, unfitted: a.r.unfitted.length, seconds: a.r.seconds }));
     R.autoRotation = { picked: best.step, tried };
     R.seconds = (Date.now() - T) / 1000;
-    fs.writeFileSync(outPath, JSON.stringify(R));
+    writeOut(R);
     for (const t of tried) console.log(`  ${String(t.step).padStart(2)} degree steps: ${t.sheets} sheet(s)` +
       (t.unfitted ? `, ${t.unfitted} unfitted` : "") + `, ${t.seconds.toFixed(1)} s` + (t.step === best.step ? "   <- kept" : ""));
     console.log(`Auto rotation picked ${best.step} degree steps (${R.seconds.toFixed(1)} s in total).`);
@@ -908,7 +911,7 @@ result.timedOut = timedOut;
 result.inHoles = inHoles;
 process.stderr.write("\n");
 result.seconds = (Date.now()-T0)/1000;
-fs.writeFileSync(outPath, JSON.stringify(result));
+writeOut(result);
 const nPlaced = result.sheets.reduce((s, sh) => s + sh.placed.length, 0);
 console.log(`Placed ${nPlaced} part(s) on ${result.sheets.length} sheet(s) in ${result.seconds.toFixed(1)} s` +
   (inHoles ? `, ${inHoles} inside holes` : "") +

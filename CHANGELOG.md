@@ -2,6 +2,22 @@
 
 All notable changes to Nest For Cuts Two - Electric Boogaloo.
 
+## Unreleased (one-click branch)
+
+### Added
+- **One click.** `NestForCuts_OneClick.jsx` runs step 1 (with its panel),
+  starts the engine hidden in the background, shows a small "Nesting… X s"
+  window while it waits, then runs step 3 automatically. One script, one
+  final alert. If Node.js is missing, the engine fails or it doesn't finish
+  in time, an alert says so instead of hanging. The three separate steps
+  still work as before.
+
+### Changed
+- Default rotation is 45° steps (90°, 10° and Auto are still in the panel).
+- Default machine is Trotec 300; GCC (Mercury III) is kept as a legacy option.
+- The engine writes its result in one go (temporary file, then renamed), so
+  a script waiting for it can never read a half-written file.
+
 ## 2026-11-24
 
 ### Added
