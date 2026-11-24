@@ -17,7 +17,7 @@ Run `NestForCuts_OneClick.jsx` instead of the three separate steps:
 1. Select your artwork in Illustrator.
 2. Run `NestForCuts_OneClick.jsx` (File > Scripts > Other Script, or from an Action).
 3. Choose your settings in the panel and click **Export**.
-4. A small "Nesting... X s" window appears while the engine works in the background (no console window).
+4. A small "Nesting... X s" window appears while the engine works in the background (a console window flashes once, then the engine runs minimized in the taskbar).
 5. Step 3 runs by itself and shows the usual final alert.
 
 Keep `NestForCuts_OneClick.jsx` in the same folder as `1_ExportForNest.jsx`, `nest.js`, `3_ApplyNest.jsx` and `swatches.cclibs`. Node.js must be installed (the same as for `2_RunNest.bat`). The three separate steps still work on their own.

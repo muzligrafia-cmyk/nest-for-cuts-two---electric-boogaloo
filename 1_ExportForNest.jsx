@@ -536,17 +536,27 @@ function nestExportInner() {
         var old = [outFile, logFile, doneFile, outFile + ".part"];
         for (var k = 0; k < old.length; k++) { var of = new File(old[k]); if (of.exists) of.remove(); }
 
-        // A tiny VBScript starts Node with no console window. When Node is
-        // done (or fails), it leaves nest_done.txt on the Desktop.
-        function q(p) { return '""' + p + '""'; }                    // quotes inside a VBScript string
-        var cmd = 'cmd /c node ' + q(engine.fsName) + ' ' + q(inFile) + ' ' + q(outFile) +
-                  ' > ' + q(logFile) + ' 2>&1 & echo done> ' + q(doneFile);
-        var vbs = new File(Folder.temp.fsName + "/nest_oneclick.vbs");
-        vbs.encoding = "UTF-8";
-        if (!vbs.open("w")) { alert("Couldn't write the launcher in " + Folder.temp.fsName); return; }
-        vbs.write('CreateObject("WScript.Shell").Run "' + cmd + '", 0, False\r\n');
-        vbs.close();
-        if (!vbs.execute()) { alert("Couldn't start the nesting engine (the launcher didn't run)."); return; }
+        // Two tiny batch files: the first opens the second minimized and closes
+        // at once; the second runs Node, then leaves nest_done.txt on the
+        // Desktop (whether Node worked or not). Plain batch files, because
+        // Windows is phasing out VBScript.
+        var tmp = Folder.temp.fsName;
+        var runBat = new File(tmp + "/nest_oneclick_run.bat"), startBat = new File(tmp + "/nest_oneclick_start.bat");
+        function writeBat(fl, lines) {
+            fl.encoding = "UTF-8"; fl.lineFeed = "Windows";
+            if (!fl.open("w")) return false;
+            fl.write(lines.join("\r\n") + "\r\n"); fl.close(); return true;
+        }
+        var okRun = writeBat(runBat, [
+            "@echo off",
+            "title Nest for Cuts - nesting",
+            'node "' + engine.fsName + '" "' + inFile + '" "' + outFile + '" > "' + logFile + '" 2>&1',
+            'echo done> "' + doneFile + '"',
+            "exit"
+        ]);
+        var okStart = writeBat(startBat, ["@echo off", 'start "" /min "' + runBat.fsName + '"', "exit"]);
+        if (!okRun || !okStart) { alert("Couldn't write the launcher in " + tmp); return; }
+        if (!startBat.execute()) { alert("Couldn't start the nesting engine (the launcher didn't run)."); return; }
 
         // wait, with a small progress window
         var LIMIT_S = CFG.TIME_LIMIT_S + 120, t0 = new Date().getTime(), done = new File(doneFile), win = null, txt = null;
@@ -577,7 +587,7 @@ function nestExportInner() {
             else alert("The nesting engine stopped without a result:\n\n" + (log ? log.substr(0, 600) : "(no message)"));
             return;
         }
-        try { vbs.remove(); } catch (e) {}
+        try { runBat.remove(); startBat.remove(); } catch (e) {}
         // step 3, run straight away (no second deferral needed: we are already deferred)
         $.global.__NEST_APPLY_NOW = true;
         $.evalFile(apply);

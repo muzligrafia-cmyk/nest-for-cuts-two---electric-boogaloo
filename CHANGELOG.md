@@ -6,8 +6,9 @@ All notable changes to Nest For Cuts Two - Electric Boogaloo.
 
 ### Added
 - **One click.** `NestForCuts_OneClick.jsx` runs step 1 (with its panel),
-  starts the engine hidden in the background, shows a small "Nesting… X s"
-  window while it waits, then runs step 3 automatically. One script, one
+  starts the engine minimized in the background (through two small batch
+  files; not VBScript, which Windows is phasing out), shows a small
+  "Nesting… X s" window while it waits, then runs step 3 automatically. One script, one
   final alert. If Node.js is missing, the engine fails or it doesn't finish
   in time, an alert says so instead of hanging. The three separate steps
   still work as before.
