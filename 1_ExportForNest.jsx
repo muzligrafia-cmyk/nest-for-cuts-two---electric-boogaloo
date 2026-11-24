@@ -655,7 +655,16 @@ function nestExportInner() {
             if (win) { try { txt.text = "Nesting\u2026 " + secs + " s"; win.update(); } catch (e) {} }
             if (secs > LIMIT_S) break;
         }
-        if (win) { try { win.close(); } catch (e) {} }
+        // Illustrator often ignores a plain close() on a palette while a
+        // script is still busy, so: hide, close, redraw (and again after step 3).
+        function closeWin() {
+            if (!win) return;
+            try { win.hide(); } catch (e) {}
+            try { win.close(); } catch (e) {}
+            win = null;
+            try { app.redraw(); } catch (e) {}
+        }
+        closeWin();
 
         var res = new File(outFile);
         if (!res.exists) {
@@ -670,7 +679,7 @@ function nestExportInner() {
         try { runBat.remove(); startBat.remove(); } catch (e) {}
         // step 3, run straight away (no second deferral needed: we are already deferred)
         $.global.__NEST_APPLY_NOW = true;
-        $.evalFile(apply);
+        try { $.evalFile(apply); } finally { closeWin(); }
     }
 }
 
