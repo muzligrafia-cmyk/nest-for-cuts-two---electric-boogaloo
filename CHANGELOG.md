@@ -13,6 +13,11 @@ All notable changes to Nest For Cuts Two - Electric Boogaloo.
   in time, an alert says so instead of hanging. The three separate steps
   still work as before.
 
+### Fixed
+- One-click fell back to "now run 2_RunNest" in real Illustrator: the one-click
+  request was lost when step 1 hands itself back to Illustrator to run a
+  moment later. It now travels along with that handoff.
+
 ### Changed
 - Default rotation is 45° steps (90°, 10° and Auto are still in the panel).
 - Default machine is Trotec 300; GCC (Mercury III) is kept as a legacy option.

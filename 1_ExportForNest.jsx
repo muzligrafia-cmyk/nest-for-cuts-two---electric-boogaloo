@@ -604,9 +604,17 @@ if ($.global.__NEST_EXPORT_NOW) {
 } else if (typeof BridgeTalk === "undefined") {
     nestExportMain();
 } else {
+    // The deferred run may happen in a different script engine, so the
+    // one-click request has to travel inside the message itself.
+    var ocPart = "";
+    if ($.global.__NEST_ONECLICK && $.global.__NEST_ONECLICK.dir) {
+        ocPart = '$.global.__NEST_ONECLICK = { dir: decodeURI("' +
+                 encodeURI($.global.__NEST_ONECLICK.dir).replace(/\\/g, "\\\\").replace(/"/g, '\\"') + '") }; ';
+        $.global.__NEST_ONECLICK = null;
+    }
     var bt = new BridgeTalk();
     bt.target = "illustrator";
-    bt.body = '$.global.__NEST_EXPORT_NOW = true; $.evalFile(new File("' + new File($.fileName).absoluteURI + '"));';
+    bt.body = ocPart + '$.global.__NEST_EXPORT_NOW = true; $.evalFile(new File("' + new File($.fileName).absoluteURI + '"));';
     bt.onError = function (errObj) { alert("1_ExportForNest failed to run: " + errObj.body); };
     bt.send();
 }
