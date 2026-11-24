@@ -1,0 +1,41 @@
+# Changelog
+
+All notable changes to Nest For Cuts Two - Electric Boogaloo.
+
+## 2026-11-24
+
+### Changed
+- **Built-in Cleanup updated to Cleanup.js V2.3 (Refined Laser Janitor).**
+  Specks are only removed if they are cuts. Because Cleanup runs before the
+  laser recolour, a "cut" here means a paper-filled outline or an already
+  pink / green line. Tiny engraving, marking, scoring and perforation bits are
+  kept. Paths with 0-1 anchor points are still removed whatever they are.
+- The final alert in step 3 now also reports how many tiny non-cut items
+  Cleanup kept.
+
+### Fixed
+- **Red scoring lines came out blue.** Illustrator's scripting engine reads a
+  chained shortcut (`a ? b : c ? d : e`) the wrong way round, so the line
+  colour picker in `3_ApplyNest.jsx` returned blue for red. It is now a plain
+  if / else. No other chained shortcuts exist in the scripts.
+
+## 2026-11-22
+
+### Added
+- First upload of the three-step pipeline: `1_ExportForNest.jsx` →
+  `2_RunNest.bat` (`nest.js`) → `3_ApplyNest.jsx`.
+- Paper sorting against `swatches.cclibs` ("Paper Swatches" folder), one run
+  of sheets per paper, labelled "Series – Paper" (Arial 35 pt, 1 cm from the
+  top-left corner, on the "Labels" layer). Overflow continues on extra sheets.
+- Machine sheet sizes: GCC (Mercury III), Trotec 300, Dömpi (Trotec 400).
+- Output to the current document or a new document (sent across in one copy).
+- Label space kept free as a text box or a full-width strip.
+- Optional steps: Normalize compound paths, Sort by paper, Clean up
+  (Cleanup.js rules, worked out in Node), Recolour for laser (Prep.js rules,
+  pink / green decided in Node).
+- Rotation choice: 90°, 45° or 10° steps, after straightening each part.
+- "Count for overlaps": loose scoring, perforation, marking and #000
+  engraving travel with the paper part they sit on (stacking order aware).
+- Already-prepped (pink / green) artwork can be nested with sorting off;
+  loose holes stay with their part.
+- Hole filling: smaller parts are nested inside the holes of bigger ones.

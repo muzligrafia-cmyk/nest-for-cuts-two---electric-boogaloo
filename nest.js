@@ -318,13 +318,17 @@ const flag = reason => flagCounts.set(reason, (flagCounts.get(reason) || 0) + 1)
 const bbOverlap = (a,b) => a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
 
 // ---------------------------------------------------------------------------
-// CLEANUP — Refined Laser Janitor V2.2 (Cleanup.js), same rules and settings,
+// CLEANUP — Refined Laser Janitor V2.3 (Cleanup.js), same rules and settings,
 // run on each part (+ its lines) on its own, in the part's original position.
 // (Running it across the whole design would flag every place where two
 // different parts overlap in the assembled view.) Returns what 3_ApplyNest
 // should do, by path number in the order step 1 read them:
 //   merges: [[path, [point numbers removed, high to low], closeFix]]
 //   specks: [path]   dups: [path]   overlaps: [[[x,y],...], ...]
+// V2.3: specks are only removed if they're CUTS. Before Prep, a cut is a
+// paper-filled outline (or an already pink / green line). Tiny engraving,
+// marking, scoring and perforation bits are kept and counted. Paths with
+// 0-1 anchor points are still removed whatever they are (invisible junk).
 // ---------------------------------------------------------------------------
 const CL = {
   DUP_TOLERANCE_MM: 0.05, MIN_OVERLAP_MM: 1.0, SAMPLE_STEP_MM: 1.0, FINE_STEP_MM: 0.2,
@@ -429,11 +433,11 @@ function cleanupPiece(objs) {
     (it.paths || []).forEach((p, pi) => {
       const a = p.a || [], pts = [];
       for (let i = 0; i + 5 < a.length; i += 6) pts.push({ a: [a[i], a[i+1]], l: [a[i+2], a[i+3]], r: [a[i+4], a[i+5]] });
-      paths.push({ it, rec, pi, z: !!p.z, pts });
+      paths.push({ it, rec, pi, z: !!p.z, s: p.s, pts });
     });
   }
-  // STEP 2: clean points & remove specks
-  const alive = [];
+  // STEP 2: clean points & remove specks (cuts only, V2.3)
+  const alive = []; let tinyKept = 0;
   for (const P of paths) {
     const pts = P.pts, removed = []; let closeFix = false;
     if (pts.length >= 2) {
@@ -452,6 +456,7 @@ function cleanupPiece(objs) {
         speck = Math.hypot(x1 - x0, y1 - y0) < C_SPECK_DIAG;
       }
     }
+    if (speck && pts.length >= 2 && !(P.s === "paper" || P.s === "cutline")) { speck = false; tinyKept++; }   // tiny non-cut: keep
     if (speck) P.rec.specks.push(P.pi); else alive.push(P);
   }
   // STEP 3: full duplicates
@@ -470,7 +475,7 @@ function cleanupPiece(objs) {
       if (A.length <= B.length) cPartialOverlaps(A, B, overlaps); else cPartialOverlaps(B, A, overlaps); } }
   const round = v => Math.round(v * 1000) / 1000;
   return { byItem, overlaps: overlaps.map(o => o.map(p => [round(p[0]), round(p[1])])),
-           counts: { specks: paths.length - alive.length, points: Object.values(byItem).reduce((n, r) => n + r.merges.reduce((m, g) => m + g[1].length + (g[2] ? 1 : 0), 0), 0), dups: infos.filter(i => i.flagged).length, overlaps: overlaps.length } };
+           counts: { specks: paths.length - alive.length, tinyKept, points: Object.values(byItem).reduce((n, r) => n + r.merges.reduce((m, g) => m + g[1].length + (g[2] ? 1 : 0), 0), 0), dups: infos.filter(i => i.flagged).length, overlaps: overlaps.length } };
 }
 
 // ---------------------------------------------------------------------------
@@ -819,7 +824,7 @@ function laserColours(done) {
 // ---------------------------------------------------------------------------
 const result = { settings: SET, sheetW: SHEET_W, sheetH: SHEET_H, labelPt: CFG.LABEL_PT, labelInsetMM: CFG.LABEL_INSET_MM,
                  sheets: [], unfitted: [], flags: [], libWarnings: LIB.warnings, library: LIB.file, papersInLibrary: LIB.count,
-                 timedOut: false, holesFound, inHoles: 0, cleanTotals: { specks: 0, points: 0, dups: 0, overlaps: 0 } };
+                 timedOut: false, holesFound, inHoles: 0, cleanTotals: { specks: 0, tinyKept: 0, points: 0, dups: 0, overlaps: 0 } };
 const DEBUG = process.env.NEST_DEBUG === "1";
 const materials = [...byMaterial.keys()].sort((a, b) => a.localeCompare(b));
 for (const mat of materials) {
