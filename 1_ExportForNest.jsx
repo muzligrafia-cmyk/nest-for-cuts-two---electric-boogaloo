@@ -339,8 +339,9 @@ function nestExportInner() {
             if (item.clipped) { addOther(info, "clipping mask"); info.rings.push({ c: "other", z: true, o: info.obj++, p: boundsRing(item.geometricBounds) }); return; }
             for (i = 0; i < item.pageItems.length; i++) readItem(item.pageItems[i], info);
         } else if (tn === "TextFrame") {
-            info.lines = true;                                       // text = marking
-            info.rings.push({ c: "black", z: true, o: info.obj++, p: boundsRing(item.geometricBounds) });
+            // Live text is never carried onto the sheets (only outlined text,
+            // which is just black shapes by then). Counted for the final alert.
+            textSkipped++;
         } else {
             var names = { PlacedItem: "linked image", RasterItem: "embedded image", SymbolItem: "symbol (expand it)",
                           PluginItem: "blend / effect object (expand it)", MeshItem: "gradient mesh", GraphItem: "graph" };
@@ -371,7 +372,7 @@ function nestExportInner() {
     var docLayers = doc.layers, nDL = docLayers.length, pi, it;
     for (pi = 0; pi < nDL; pi++) collectTop(docLayers[pi]);
 
-    var sources = [];
+    var sources = [], textSkipped = 0;
     var sel = doc.selection, nSel = sel.length;          // read the selection once
     if (nSel) {
         for (pi = 0; pi < nSel; pi++) {
@@ -380,10 +381,14 @@ function nestExportInner() {
             while (it.parent.typename !== "Layer") it = it.parent;
             var dup = false;
             for (var q = 0; q < sources.length; q++) if (sources[q] == it) { dup = true; break; }
-            if (!dup && !skipLayer(it.layer.name)) sources.push(it);
+            if (dup || skipLayer(it.layer.name)) continue;
+            if (it.typename === "TextFrame") { textSkipped++; continue; }   // live text: not carried over
+            sources.push(it);
         }
     } else for (pi = 0; pi < topItems.length; pi++) {
-        if (eligible(topItems[pi])) sources.push(topItems[pi]);
+        if (!eligible(topItems[pi])) continue;
+        if (topItems[pi].typename === "TextFrame") { textSkipped++; continue; }
+        sources.push(topItems[pi]);
     }
     if (!sources.length) { alert("Nothing to nest. Select your artwork first."); return; }
 
@@ -494,7 +499,7 @@ function nestExportInner() {
         ',"recolour":' + (prefs.recolour ? "true" : "false") +
         ',"sourceDoc":' + esc(doc.name) + '},' +
         '"spacingMM":' + CFG.SPACING + ',"marginMM":' + CFG.MARGIN + ',"rotationStep":' + prefs.rotStep +
-        ',"timeLimitS":' + CFG.TIME_LIMIT_S + ',"items":[' + itemsJ.join(",") + "]}";
+        ',"timeLimitS":' + CFG.TIME_LIMIT_S + ',"textSkipped":' + textSkipped + ',"items":[' + itemsJ.join(",") + "]}";
 
     var f = new File(CFG.OUT_FILE);
     f.encoding = "UTF-8";
@@ -504,6 +509,7 @@ function nestExportInner() {
     alert("Exported " + itemsJ.length + " object(s) for " + MACH.name + ":\n" +
           "  " + nParts + " part(s)\n" +
           "  " + nLines + " loose line object(s)\n" +
+          (textSkipped ? "  " + textSkipped + " live text box(es) left out (outline text to keep it)\n" : "") +
           (nOdd ? "  " + nOdd + " object(s) with something unexpected (listed after step 3)\n" : "") +
           "\nNext: double-click 2_RunNest, then run 3_ApplyNest.jsx.");
 }

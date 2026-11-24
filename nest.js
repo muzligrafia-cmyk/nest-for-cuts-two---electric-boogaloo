@@ -873,7 +873,7 @@ function laserColours(done) {
 // ---------------------------------------------------------------------------
 const result = { settings: SET, sheetW: SHEET_W, sheetH: SHEET_H, labelPt: CFG.LABEL_PT, labelInsetMM: CFG.LABEL_INSET_MM,
                  sheets: [], unfitted: [], flags: [], libWarnings: LIB.warnings, library: LIB.file, papersInLibrary: LIB.count,
-                 timedOut: false, holesFound, inHoles: 0, cleanTotals: { specks: 0, tinyKept: 0, points: 0, dups: 0, overlaps: 0 } };
+                 timedOut: false, holesFound, inHoles: 0, textSkipped: IN.textSkipped || 0, cleanTotals: { specks: 0, tinyKept: 0, points: 0, dups: 0, overlaps: 0 } };
 const DEBUG = process.env.NEST_DEBUG === "1";
 const materials = [...byMaterial.keys()].sort((a, b) => a.localeCompare(b));
 for (const mat of materials) {

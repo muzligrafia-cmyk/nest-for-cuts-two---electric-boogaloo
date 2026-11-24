@@ -402,6 +402,21 @@ function nestApplyMain() {
         return selfDup ? null : obj;
     }
 
+    // Live text inside a part never goes onto the sheets. New document: the copy
+    // just loses it. Current document: it stays in your design where it was.
+    function dropText(obj, homeLayer) {
+        if (obj.typename !== "GroupItem") return;
+        var kids = obj.pageItems, nk = kids.length, list = [], k;
+        for (k = 0; k < nk; k++) list.push(kids[k]);
+        for (k = 0; k < list.length; k++) {
+            var it = list[k];
+            if (it.typename === "TextFrame") {
+                if (NEW) { try { it.remove(); } catch (e) {} }
+                else { try { it.move(homeLayer, ElementPlacement.PLACEATBEGINNING); } catch (e) {} }
+            } else if (it.typename === "GroupItem") dropText(it, homeLayer);
+        }
+    }
+
     var perSheet = [], fallback = [], fastN = 0, msCopy = 0, msColour = 0, msMove = 0, msClean = 0, t1;
     for (i = 0; i < res.sheets.length; i++) {
         var sheet = res.sheets[i], rc = wRects[i], cnt = 0;
@@ -412,7 +427,10 @@ function nestApplyMain() {
                 var src0 = byId[pl.items[q]];
                 if (!src0) { missing++; continue; }
                 t1 = new Date().getTime();
+                var homeLayer = null;
+                try { homeLayer = src0.layer; } catch (e) {}
                 var obj = bring([src0])[0];
+                dropText(obj, homeLayer);
                 msCopy += new Date().getTime() - t1; t1 = new Date().getTime();
                 if (CLEANUP && pl.clean && pl.clean[pl.items[q]]) {
                     try { obj = cleanItem(obj, pl.clean[pl.items[q]], getHolder); } catch (e) { cleanSkipped++; }
@@ -563,6 +581,8 @@ function nestApplyMain() {
     for (i = 0; i < res.sheets.length; i++) { msg += "\n  " + res.sheets[i].label + " \u2014 " + perSheet[i] + " part(s)"; totalPlaced += perSheet[i]; }
     if (!res.sheets.length) msg += "\n  (no sheets: nothing could be nested)";
     if (res.inHoles) msg += "\n\n" + res.inHoles + " part(s) tucked inside holes.";
+    if (res.textSkipped) msg += "\n\n" + res.textSkipped + " live text box(es) were not carried over" +
+        (S.output === "new" ? "" : " (they stay where they were)") + ". Outline text first if it should be engraved.";
     if (res.autoRotation) {
         var ar = res.autoRotation, tr = [];
         for (i = 0; i < ar.tried.length; i++) tr.push(ar.tried[i].step + "\u00B0: " + ar.tried[i].sheets + " sheet(s)" +

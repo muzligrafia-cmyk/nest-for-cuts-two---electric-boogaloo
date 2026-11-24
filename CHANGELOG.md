@@ -15,6 +15,12 @@ All notable changes to Nest For Cuts Two - Electric Boogaloo.
   organic).
 
 ### Changed
+- **Live text is no longer carried onto the sheets.** Point, area and path
+  text is not treated as a loose marking line, and is stripped from parts it
+  is grouped with. Only outlined (expanded) text travels with its part, as
+  engraving / marking. In "New document" mode the copies simply lose the
+  text; in "Current document" mode it stays in the design where it was.
+  Step 1's and step 3's alerts say how many text boxes were left out.
 - **Built-in Cleanup updated to Cleanup.js V2.3 (Refined Laser Janitor).**
   Specks are only removed if they are cuts. Because Cleanup runs before the
   laser recolour, a "cut" here means a paper-filled outline or an already
