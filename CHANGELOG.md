@@ -21,6 +21,9 @@ All notable changes to Nest For Cuts Two - Electric Boogaloo.
   "Sheet N" artboards too). Auto rotation only counts new sheets.
 
 ### Fixed
+- The "Nesting… X s" counter could stay on screen after one-click finished.
+  It's now hidden, closed and the screen redrawn as soon as nesting ends,
+  and closed again after step 3 as a backup.
 - One-click fell back to "now run 2_RunNest" in real Illustrator: the one-click
   request was lost when step 1 hands itself back to Illustrator to run a
   moment later. It now travels along with that handoff.
